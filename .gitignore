@@ -1,1 +1,10 @@
 db/birdcage.db
+
+# Local dev environment — contains personal config, never commit
+**/.env.local
+.env.local
+.env
+
+# Claude Code local config and project notes
+.claude/
+birdcage-ui-redesign.md
