@@ -2,7 +2,7 @@
  * BirdCAGE Phase 1 dashboard — client-side data fetch + render
  *
  * Globals expected on window (injected by index.html):
- *   API_BASE  — e.g. "https://birdsapi.coupland.me"
+ *   API_BASE    — e.g. "https://birdsapi.coupland.me"
  *   SCRIPT_NAME — Flask SCRIPT_NAME prefix (may be "")
  */
 
@@ -21,7 +21,59 @@
   let barChart = null;
   let refreshTimer = null;
 
-  // ── Helpers ────────────────────────────────────────────────────────
+  // ── Wikipedia helpers ──────────────────────────────────────────────
+  // "European Robin" → "European_robin"
+  // "Eurasian Blue Tit" → "Eurasian_blue_tit"
+  function wikiSlug(name) {
+    const lower = name.toLowerCase().replace(/ /g, '_');
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }
+
+  function wikiUrl(name) {
+    return `https://en.wikipedia.org/wiki/${wikiSlug(name)}`;
+  }
+
+  // Thumbnail cache: slug → Promise<url|null>
+  const _thumbCache = new Map();
+
+  function fetchWikiThumb(name) {
+    const slug = wikiSlug(name);
+    if (_thumbCache.has(slug)) return _thumbCache.get(slug);
+    const p = fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => data?.thumbnail?.source ?? null)
+      .catch(() => null);
+    _thumbCache.set(slug, p);
+    return p;
+  }
+
+  // Build a species name element: tiny thumb + linked name
+  function speciesEl(name, thumbSize = 20) {
+    const wrap = document.createElement('span');
+    wrap.style.cssText = 'display:inline-flex;align-items:center;gap:5px;';
+
+    // Thumbnail — inserted once promise resolves
+    const img = document.createElement('img');
+    img.style.cssText = `width:${thumbSize}px;height:${thumbSize}px;object-fit:cover;border-radius:3px;display:none;`;
+    img.alt = '';
+    fetchWikiThumb(name).then(src => {
+      if (src) { img.src = src; img.style.display = ''; }
+    });
+    wrap.appendChild(img);
+
+    // Linked name
+    const a = document.createElement('a');
+    a.href = wikiUrl(name);
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = name;
+    a.addEventListener('click', e => e.stopPropagation());
+    wrap.appendChild(a);
+
+    return wrap;
+  }
+
+  // ── General helpers ────────────────────────────────────────────────
   function today() {
     return new Date().toISOString().split('T')[0];
   }
@@ -42,29 +94,11 @@
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  function wikiUrl(name) {
-    return 'https://en.wikipedia.org/wiki/Special:Search?search=' +
-      encodeURIComponent(name + ' bird');
-  }
-
-  function wikiIcon(name) {
-    const a = document.createElement('a');
-    a.href = wikiUrl(name);
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.className = 'wiki-link';
-    a.title = 'Wikipedia';
-    a.textContent = 'W';
-    a.addEventListener('click', e => e.stopPropagation());
-    return a;
-  }
-
   function loading(el) {
     el.innerHTML = '<div class="bc-loading">Loading…</div>';
   }
 
   function heatColor(ratio) {
-    // white → teal
     const r = Math.round(255 - ratio * (255 - 29));
     const g = Math.round(255 - ratio * (255 - 158));
     const b = Math.round(255 - ratio * (255 - 117));
@@ -94,18 +128,17 @@
     const start = dateNDaysAgo(lookbackDays);
     const end = today();
 
-    // Kick off independent fetches in parallel
-    const [reportData, recentData] = await Promise.all([
+    const [reportData, recentData, highConfData] = await Promise.all([
       fetchJSON(`${API_BASE}/api/detections/date_range_report/${start}/${end}`),
       fetchJSON(`${API_BASE}/api/detections/recent/50`),
+      fetchJSON(`${API_BASE}/api/detections/date_range/${start}/${end}/highest_confidence`),
     ]);
 
-    // Hourly data: for 1-day use count_by_hour; for multi-day fetch each day
+    // Hourly data: single day or aggregate across multiple days
     let hourlyData = [];
     if (lookbackDays === 1) {
       hourlyData = await fetchJSON(`${API_BASE}/api/detections/count_by_hour/${end}`);
     } else {
-      // Fetch all days in parallel then merge
       const days = [];
       for (let i = 0; i < lookbackDays; i++) {
         const d = new Date();
@@ -124,25 +157,22 @@
     renderHeatmap(hourlyData);
     renderRecentDetections(recentData);
     renderSparklines(reportData, lookbackDays);
+    renderRarest(reportData, highConfData);
   }
 
   // ── Stats row ──────────────────────────────────────────────────────
   function renderStats(report, recent, days) {
-    // Total detections
     const total = report.reduce((s, r) => s + r.daily_count, 0);
 
-    // Unique species
     const allSpecies = [...new Set(report.map(r => r.common_name))];
     const todayStr = today();
-    const todaySpecies = new Set(
-      report.filter(r => r.date === todayStr).map(r => r.common_name)
-    );
     const newToday = days > 1
-      ? allSpecies.filter(s => todaySpecies.has(s) &&
-          !report.some(r => r.date !== todayStr && r.common_name === s)).length
+      ? allSpecies.filter(s =>
+          report.some(r => r.date === todayStr && r.common_name === s) &&
+          !report.some(r => r.date !== todayStr && r.common_name === s)
+        ).length
       : 0;
 
-    // Most active hour (from recent 50)
     const hourCounts = {};
     recent.forEach(det => {
       const h = new Date(det[1]).getHours();
@@ -151,7 +181,6 @@
     const peakHour = Object.entries(hourCounts).sort((a,b) => b[1]-a[1])[0];
     const peakHourStr = peakHour ? `${String(peakHour[0]).padStart(2,'0')}:00` : '—';
 
-    // Top species
     const speciesTotals = {};
     report.forEach(r => { speciesTotals[r.common_name] = (speciesTotals[r.common_name]||0) + r.daily_count; });
     const topEntry = Object.entries(speciesTotals).sort((a,b) => b[1]-a[1])[0];
@@ -162,7 +191,7 @@
     if (specEl) {
       specEl.textContent = allSpecies.length;
       const badge = specEl.parentElement.querySelector('.stat-badge');
-      if (badge && days > 1) {
+      if (badge && days > 1 && newToday > 0) {
         badge.textContent = `+${newToday} today`;
         badge.style.display = '';
       } else if (badge) {
@@ -181,26 +210,15 @@
   // ── Hourly activity chart ──────────────────────────────────────────
   function renderHourlyChart(hourlyData, days) {
     const counts = Array(24).fill(0);
-    const dayCounts = Array(24).fill(0);
-
     hourlyData.forEach(row => {
       const h = parseInt(row.hour, 10);
-      if (h >= 0 && h < 24) {
-        counts[h] += row.count;
-        dayCounts[h] = 1; // track which hours have data (simplified)
-      }
+      if (h >= 0 && h < 24) counts[h] += row.count;
     });
 
     const labels = counts.map((_, i) => `${String(i).padStart(2,'0')}:00`);
     const values = days > 1
-      ? counts.map((c, h) => {
-          // average across days that had any data in this hour
-          const daysWithData = days; // approximate: divide by lookback days
-          return +(c / daysWithData).toFixed(1);
-        })
+      ? counts.map(c => +(c / days).toFixed(1))
       : counts;
-
-    const dawnStart = 5, dawnEnd = 8;
 
     const ctx = document.getElementById('hourly-chart');
     if (!ctx) return;
@@ -224,27 +242,7 @@
       options: {
         responsive: true,
         maintainAspectRatio: true,
-        plugins: {
-          legend: { display: false },
-          annotation: {
-            annotations: {
-              dawn: {
-                type: 'box',
-                xMin: dawnStart,
-                xMax: dawnEnd,
-                backgroundColor: 'rgba(255,200,80,.15)',
-                borderWidth: 0,
-                label: {
-                  display: true,
-                  content: '🌅 Dawn chorus',
-                  position: 'start',
-                  font: { size: 10 },
-                  color: '#999',
-                },
-              },
-            },
-          },
-        },
+        plugins: { legend: { display: false } },
         scales: {
           x: { grid: { display: false }, ticks: { maxTicksLimit: 12, font: { size: 10 } } },
           y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } },
@@ -285,9 +283,7 @@
         plugins: {
           legend: { display: false },
           tooltip: {
-            callbacks: {
-              label: ctx => ` ${ctx.parsed.x.toLocaleString()} detections`,
-            },
+            callbacks: { label: ctx => ` ${ctx.parsed.x.toLocaleString()} detections` },
           },
         },
         scales: {
@@ -295,30 +291,10 @@
           y: { ticks: { font: { size: 11 } } },
         },
         onClick: (evt, elements) => {
-          if (elements.length) {
-            const name = labels[elements[0].index];
-            window.open(wikiUrl(name), '_blank', 'noopener');
-          }
+          if (elements.length) window.open(wikiUrl(labels[elements[0].index]), '_blank', 'noopener');
         },
       },
     });
-
-    // Render wiki links below chart
-    const linksEl = document.getElementById('bar-wiki-links');
-    if (linksEl) {
-      linksEl.innerHTML = '';
-      sorted.forEach(([name]) => {
-        const span = document.createElement('span');
-        span.style.cssText = 'margin-right:8px;font-size:.75rem;';
-        const a = document.createElement('a');
-        a.href = wikiUrl(name);
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.textContent = name;
-        span.appendChild(a);
-        linksEl.appendChild(span);
-      });
-    }
   }
 
   // ── Heatmap ────────────────────────────────────────────────────────
@@ -326,7 +302,6 @@
     const container = document.getElementById('heatmap-container');
     if (!container) return;
 
-    // Aggregate: species → hour → count
     const matrix = {};
     hourlyData.forEach(row => {
       const h = parseInt(row.hour, 10);
@@ -334,7 +309,6 @@
       matrix[row.common_name][h] += row.count;
     });
 
-    // Sort species by total count desc, cap at 25 rows
     const speciesList = Object.entries(matrix)
       .map(([name, hrs]) => ({ name, total: hrs.reduce((s,v) => s+v,0), hrs }))
       .sort((a,b) => b.total - a.total)
@@ -349,19 +323,15 @@
     table.id = 'heatmap-table';
     table.className = 'table table-borderless mb-0';
 
-    // Header row
     const thead = table.createTHead();
     const hRow = thead.insertRow();
-    const thLabel = document.createElement('th');
-    thLabel.textContent = '';
-    hRow.appendChild(thLabel);
+    hRow.insertCell().textContent = '';
     for (let h = 0; h < 24; h++) {
       const th = document.createElement('th');
       th.textContent = String(h).padStart(2,'0');
       hRow.appendChild(th);
     }
 
-    // Body rows
     const tbody = table.createTBody();
     speciesList.forEach(({ name, hrs }) => {
       const max = Math.max(...hrs, 1);
@@ -370,15 +340,12 @@
       const tdName = tr.insertCell();
       tdName.className = 'species-label';
       tdName.title = name;
-      const nameText = document.createTextNode(name + ' ');
-      tdName.appendChild(nameText);
-      tdName.appendChild(wikiIcon(name));
+      tdName.appendChild(speciesEl(name, 16));
 
       hrs.forEach((count, h) => {
         const td = tr.insertCell();
         td.className = 'heat-cell';
-        const ratio = count / max;
-        td.style.backgroundColor = count > 0 ? heatColor(ratio) : '#f5f5f5';
+        td.style.backgroundColor = count > 0 ? heatColor(count / max) : '#f5f5f5';
         td.title = `${name} — ${String(h).padStart(2,'0')}:00 — ${count} detection${count !== 1 ? 's' : ''}`;
         if (count > 0) td.textContent = count;
       });
@@ -404,24 +371,19 @@
         window.location.href = `${SCRIPT_NAME}/detections/detection/${id}`;
       });
 
-      // Time
       const tdTime = document.createElement('td');
       tdTime.textContent = fmtDate(ts) + ' ' + fmtTime(ts);
       tr.appendChild(tdTime);
 
-      // Stream (hidden on mobile)
       const tdStream = document.createElement('td');
       tdStream.className = 'd-none d-md-table-cell';
       tdStream.textContent = streamName || '';
       tr.appendChild(tdStream);
 
-      // Species + wiki link
       const tdSpecies = document.createElement('td');
-      tdSpecies.appendChild(document.createTextNode(commonName));
-      tdSpecies.appendChild(wikiIcon(commonName));
+      tdSpecies.appendChild(speciesEl(commonName, 20));
       tr.appendChild(tdSpecies);
 
-      // Confidence badge
       const tdConf = document.createElement('td');
       const badge = document.createElement('span');
       badge.className = `conf-badge ${confClass}`;
@@ -429,7 +391,6 @@
       tdConf.appendChild(badge);
       tr.appendChild(tdConf);
 
-      // Audio (hidden on mobile)
       const tdAudio = document.createElement('td');
       tdAudio.className = 'd-none d-md-table-cell';
       if (filename) {
@@ -456,7 +417,6 @@
       }
       tr.appendChild(tdAudio);
 
-      // Spectrogram thumb
       const tdSpec = document.createElement('td');
       if (filename) {
         const img = document.createElement('img');
@@ -481,19 +441,9 @@
     if (!container) return;
     loading(container);
 
-    // Build per-species daily totals
-    const speciesDays = {};
-    report.forEach(r => {
-      if (!speciesDays[r.common_name]) speciesDays[r.common_name] = {};
-      speciesDays[r.common_name][r.date] = (speciesDays[r.common_name][r.date]||0) + r.daily_count;
-    });
-
-    // Need 7 days regardless of look-back; if look-back < 7, fetch extra
     async function getSparkData() {
       if (currentLookback >= 7) return report;
-      const start7 = dateNDaysAgo(7);
-      const end7 = today();
-      return fetchJSON(`${API_BASE}/api/detections/date_range_report/${start7}/${end7}`);
+      return fetchJSON(`${API_BASE}/api/detections/date_range_report/${dateNDaysAgo(7)}/${today()}`);
     }
 
     getSparkData().then(sparkReport => {
@@ -503,7 +453,6 @@
         sd[r.common_name][r.date] = (sd[r.common_name][r.date]||0) + r.daily_count;
       });
 
-      // Total per species over 7 days
       const specTotals = {};
       Object.entries(sd).forEach(([name, days]) => {
         specTotals[name] = Object.values(days).reduce((s,v) => s+v, 0);
@@ -511,7 +460,6 @@
 
       const top5 = Object.entries(specTotals).sort((a,b) => b[1]-a[1]).slice(0, 5);
 
-      // Build date labels for past 7 days
       const dates = [];
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
@@ -529,9 +477,7 @@
 
         const labelEl = document.createElement('span');
         labelEl.className = 'spark-label';
-        labelEl.title = name;
-        labelEl.appendChild(document.createTextNode(name + ' '));
-        labelEl.appendChild(wikiIcon(name));
+        labelEl.appendChild(speciesEl(name, 18));
 
         const svg = buildSparkSVG(dailyCounts, maxVal, PALETTE[idx % PALETTE.length]);
 
@@ -564,16 +510,13 @@
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
 
-    // Fill area
     const firstX = PAD;
     const lastX = PAD + (n-1) * ((W - PAD*2) / (n-1));
     const area = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    area.setAttribute('points',
-      `${firstX},${H} ${points} ${lastX},${H}`);
+    area.setAttribute('points', `${firstX},${H} ${points} ${lastX},${H}`);
     area.setAttribute('fill', color + '33');
     svg.appendChild(area);
 
-    // Line
     const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
     polyline.setAttribute('points', points);
     polyline.setAttribute('fill', 'none');
@@ -583,6 +526,71 @@
     svg.appendChild(polyline);
 
     return svg;
+  }
+
+  // ── Rarest appearances ─────────────────────────────────────────────
+  // Shows species with the fewest detections in the window, but only
+  // those where the best detection had confidence > 0.8 (genuinely seen).
+  function renderRarest(report, highConfData) {
+    const container = document.getElementById('rarest-container');
+    if (!container) return;
+
+    // Build max-confidence map from highest_confidence tuples
+    // Tuple: [id, timestamp, stream_id, streamname, scientific_name, common_name, confidence, filename]
+    const maxConf = {};
+    highConfData.forEach(det => {
+      const name = det[5];   // common_name
+      const conf = parseFloat(det[6]);
+      if (!maxConf[name] || conf > maxConf[name]) maxConf[name] = conf;
+    });
+
+    // Total counts from report
+    const speciesTotals = {};
+    report.forEach(r => {
+      speciesTotals[r.common_name] = (speciesTotals[r.common_name]||0) + r.daily_count;
+    });
+
+    // Filter to confident species, sort by count ascending
+    const rare = Object.entries(speciesTotals)
+      .filter(([name]) => (maxConf[name] || 0) >= 0.8)
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, 10);
+
+    container.innerHTML = '';
+
+    if (!rare.length) {
+      container.innerHTML = '<div class="text-muted" style="font-size:.85rem">No confident detections in this window</div>';
+      return;
+    }
+
+    rare.forEach(([name, count], idx) => {
+      const conf = maxConf[name];
+      const row = document.createElement('div');
+      row.className = 'sparkline-row';
+      row.style.cssText = 'align-items:center;';
+
+      // Species name with thumbnail
+      const labelEl = document.createElement('span');
+      labelEl.className = 'spark-label';
+      labelEl.style.flex = '0 0 180px';
+      labelEl.appendChild(speciesEl(name, 24));
+
+      // Detection count pill
+      const countEl = document.createElement('span');
+      countEl.style.cssText = 'font-size:.78rem;color:#666;flex:1;';
+      countEl.textContent = `${count} detection${count !== 1 ? 's' : ''}`;
+
+      // Confidence badge
+      const confEl = document.createElement('span');
+      confEl.className = `conf-badge ${conf >= 0.9 ? 'conf-high' : 'conf-mid'}`;
+      confEl.title = 'Best confidence score';
+      confEl.textContent = (conf * 100).toFixed(0) + '%';
+
+      row.appendChild(labelEl);
+      row.appendChild(countEl);
+      row.appendChild(confEl);
+      container.appendChild(row);
+    });
   }
 
   // ── Auto-refresh ───────────────────────────────────────────────────
