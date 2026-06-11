@@ -27,7 +27,7 @@ def create_app(init_celery=True):
     app = Flask(__name__, static_url_path='/static', static_folder='static')
 
     cors_origins = CORS_ORIGINS.split(',')
-    CORS(app, origins=cors_origins)
+    CORS(app, origins=cors_origins, supports_credentials=True)
 
     create_streams_table()
     create_preferences_table()
