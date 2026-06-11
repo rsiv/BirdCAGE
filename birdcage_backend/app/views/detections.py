@@ -372,29 +372,32 @@ def get_date_range_report(start_date, end_date):
     connection = sqlite3.connect(DATABASE_FILE)
     cursor = connection.cursor()
 
-    cursor.execute('''  
-        WITH daily_counts AS (  
-            SELECT common_name,  
-                   date(timestamp) AS date,  
-                   COUNT(*) AS daily_count  
-            FROM detections  
-            WHERE date(timestamp) BETWEEN date(?) AND date(?)  
-            GROUP BY common_name, date  
-        ),  
-        total_counts AS (  
-            SELECT common_name,  
-                   COUNT(*) AS total_count  
-            FROM detections  
-            WHERE date(timestamp) BETWEEN date(?) AND date(?)  
-            GROUP BY common_name  
-        )  
-        SELECT dc.common_name,  
-               tc.total_count,  
-               dc.date,  
-               dc.daily_count  
-        FROM daily_counts dc  
-        JOIN total_counts tc ON dc.common_name = tc.common_name  
-        ORDER BY tc.total_count DESC, dc.common_name, dc.date  
+    cursor.execute('''
+        WITH daily_counts AS (
+            SELECT common_name,
+                   scientific_name,
+                   date(timestamp) AS date,
+                   COUNT(*) AS daily_count
+            FROM detections
+            WHERE date(timestamp) BETWEEN date(?) AND date(?)
+            GROUP BY common_name, scientific_name, date
+        ),
+        total_counts AS (
+            SELECT common_name,
+                   scientific_name,
+                   COUNT(*) AS total_count
+            FROM detections
+            WHERE date(timestamp) BETWEEN date(?) AND date(?)
+            GROUP BY common_name, scientific_name
+        )
+        SELECT dc.common_name,
+               dc.scientific_name,
+               tc.total_count,
+               dc.date,
+               dc.daily_count
+        FROM daily_counts dc
+        JOIN total_counts tc ON dc.common_name = tc.common_name
+        ORDER BY tc.total_count DESC, dc.common_name, dc.date
     ''', (start_date, end_date, start_date, end_date))
 
     results = cursor.fetchall()
