@@ -1,0 +1,217 @@
+/* Phase 1 dashboard styles — additive, does not override styles.css */
+
+:root {
+  --bc-teal: #1D9E75;
+  --bc-teal-light: #d4f0e6;
+  --bc-teal-dark: #157a5a;
+  --bc-amber: #e6a817;
+  --bc-coral: #e05c5c;
+  --bc-blue: #4a90d9;
+  --bc-muted: #6c757d;
+}
+
+/* ── Look-back selector ─────────────────────────────────────────── */
+.lookback-selector .btn-check:checked + .btn-outline-success {
+  background-color: var(--bc-teal);
+  border-color: var(--bc-teal);
+  color: #fff;
+}
+.lookback-selector .btn-outline-success {
+  border-color: var(--bc-teal);
+  color: var(--bc-teal);
+}
+.lookback-selector .btn-outline-success:hover {
+  background-color: var(--bc-teal);
+  color: #fff;
+}
+
+/* ── Stat cards ─────────────────────────────────────────────────── */
+.stat-card {
+  border-left: 4px solid var(--bc-teal);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  height: 100%;
+}
+.stat-card .stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--bc-teal-dark);
+  line-height: 1.1;
+}
+.stat-card .stat-label {
+  font-size: .8rem;
+  color: var(--bc-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.stat-card .stat-badge {
+  font-size: .7rem;
+  background: var(--bc-teal-light);
+  color: var(--bc-teal-dark);
+  border-radius: 10px;
+  padding: 1px 6px;
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+/* ── Section cards ───────────────────────────────────────────────── */
+.dash-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.dash-card h5 {
+  font-size: .95rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: .75rem;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: .5rem;
+}
+
+/* ── Charts ─────────────────────────────────────────────────────── */
+.chart-container {
+  position: relative;
+}
+
+/* ── Heatmap ─────────────────────────────────────────────────────── */
+#heatmap-container {
+  overflow-x: auto;
+}
+#heatmap-table {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: .75rem;
+}
+#heatmap-table th {
+  font-size: .7rem;
+  text-align: center;
+  padding: 2px 4px;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--bc-muted);
+}
+#heatmap-table td.species-label {
+  white-space: nowrap;
+  padding-right: 8px;
+  font-size: .78rem;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 1;
+}
+#heatmap-table td.heat-cell {
+  width: 22px;
+  height: 20px;
+  border-radius: 3px;
+  text-align: center;
+  font-size: .65rem;
+  color: transparent;
+  cursor: default;
+  transition: transform .1s;
+}
+#heatmap-table td.heat-cell:hover {
+  transform: scale(1.3);
+  color: #fff;
+  z-index: 2;
+  position: relative;
+}
+
+/* ── Confidence badges ───────────────────────────────────────────── */
+.conf-high  { background-color: #198754; color: #fff; }
+.conf-mid   { background-color: #fd7e14; color: #fff; }
+.conf-low   { background-color: #dc3545; color: #fff; }
+.conf-badge { font-size: .75rem; padding: 2px 6px; border-radius: 10px; font-weight: 600; }
+
+/* ── Wikipedia link icon ─────────────────────────────────────────── */
+.wiki-link {
+  font-size: .7rem;
+  color: var(--bc-muted);
+  margin-left: 4px;
+  text-decoration: none;
+  vertical-align: middle;
+}
+.wiki-link:hover { color: var(--bc-teal); }
+
+/* ── Sparklines ─────────────────────────────────────────────────── */
+.sparkline-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: .4rem;
+  gap: .5rem;
+}
+.sparkline-row .spark-label {
+  flex: 0 0 140px;
+  font-size: .8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sparkline-row svg {
+  flex: 1;
+  height: 28px;
+}
+.sparkline-row .spark-count {
+  flex: 0 0 40px;
+  text-align: right;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--bc-teal-dark);
+}
+
+/* ── Recent detections table ─────────────────────────────────────── */
+#recent-detections-table thead th {
+  font-size: .78rem;
+  text-transform: uppercase;
+  color: var(--bc-muted);
+  letter-spacing: .04em;
+  border-top: none;
+}
+#recent-detections-table tbody tr { cursor: pointer; }
+#recent-detections-table tbody tr:hover { background: #f8fffe; }
+#recent-detections-table .spec-thumb {
+  width: 64px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 3px;
+  cursor: zoom-in;
+}
+
+/* ── Loading placeholder ─────────────────────────────────────────── */
+.bc-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  color: var(--bc-muted);
+  font-size: .85rem;
+}
+.bc-loading::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--bc-teal-light);
+  border-top-color: var(--bc-teal);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  margin-right: .5rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Bar chart species labels ────────────────────────────────────── */
+.bar-label-wiki {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── General spacing ─────────────────────────────────────────────── */
+.dashboard-section-gap { margin-top: 1.25rem; }

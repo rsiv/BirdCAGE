@@ -1,298 +1,139 @@
 {% extends "base.html" %}
 
-{% block title %}
-  BirdCAGE
+{% block title %}BirdCAGE Dashboard{% endblock %}
+
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 {% endblock %}
 
 {% block date_picker %}
-  <form class="d-flex">
-      <input type="date" id="date-picker" class="form-control" value="{{ today }}" />
-  </form>
+  <div class="lookback-selector d-flex align-items-center gap-2 ms-auto me-2">
+    <span class="text-muted" style="font-size:.8rem;white-space:nowrap">Look back:</span>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Look-back window">
+      <input type="radio" class="btn-check" name="lookback" id="lb-1"  value="1"  autocomplete="off">
+      <label class="btn btn-outline-success" for="lb-1">24 h</label>
+
+      <input type="radio" class="btn-check" name="lookback" id="lb-2"  value="2"  autocomplete="off">
+      <label class="btn btn-outline-success" for="lb-2">48 h</label>
+
+      <input type="radio" class="btn-check" name="lookback" id="lb-7"  value="7"  autocomplete="off">
+      <label class="btn btn-outline-success" for="lb-7">7 d</label>
+
+      <input type="radio" class="btn-check" name="lookback" id="lb-30" value="30" autocomplete="off">
+      <label class="btn btn-outline-success" for="lb-30">30 d</label>
+    </div>
+  </div>
 {% endblock %}
 
 {% block content %}
-    <div class="row">
-        <div class="col-12">
-            <h2>Recent Detections</h2>
-            <div class="table-responsive">
-                <table class="table" id="recent-detections-table">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th class="d-none d-md-table-cell">Stream Name</th>
-                            <th>Common Name</th>
-                            <th>Confidence</th>
-                            <th class="d-none d-md-table-cell">Audio</th>
-                            <th>Spectrogram</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+<div class="py-3">
 
-    <div class="row">
-        <div class="col-12">
-            <h2>Detection Summary</h2>
-                <div class="table-responsive">
-                    <table class="table table-fixed-header" id="detections-by-day-and-hour-table">
-                        <thead>
-                          <tr class="sticky-header">
-                            <th class="common-name-col">Common Name</th>
-                            <!-- The header columns for hours will be generated through JavaScript -->
-                          </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-        </div>
+  {# ── Stats row ──────────────────────────────────────────────────── #}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Total detections</div>
+        <div class="stat-value" id="stat-total">—</div>
+      </div>
     </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Unique species</div>
+        <div>
+          <span class="stat-value" id="stat-species">—</span>
+          <span class="stat-badge" id="stat-new-badge" style="display:none"></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Peak hour</div>
+        <div class="stat-value" id="stat-peak-hour">—</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Top species</div>
+        <div class="stat-value" id="stat-top-species" style="font-size:1rem">—</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Row: hourly chart + sparklines ─────────────────────────────── #}
+  <div class="row g-3 mb-1">
+    <div class="col-12 col-lg-8">
+      <div class="dash-card">
+        <h5>Hourly activity</h5>
+        <div class="chart-container">
+          <canvas id="hourly-chart" height="120"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-4">
+      <div class="dash-card">
+        <h5>Top 5 species — 7-day trend</h5>
+        <div id="sparklines-container">
+          <div class="bc-loading">Loading…</div>
+        </div>
+      </div>
+      <div class="dash-card">
+        <h5>Rarest appearances <span class="text-muted fw-normal" style="font-size:.75rem">confidence &gt; 80%</span></h5>
+        <div id="rarest-container">
+          <div class="bc-loading">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Row: bar chart + heatmap ────────────────────────────────────── #}
+  <div class="row g-3 mb-1">
+    <div class="col-12 col-lg-5">
+      <div class="dash-card">
+        <h5>Species detections</h5>
+        <div class="chart-container" style="height:380px">
+          <canvas id="bar-chart"></canvas>
+        </div>
+        <div id="bar-wiki-links" class="mt-2" style="line-height:1.8"></div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-7">
+      <div class="dash-card">
+        <h5>Species × hour heatmap</h5>
+        <div id="heatmap-container">
+          <div class="bc-loading">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Recent detections ───────────────────────────────────────────── #}
+  <div class="dash-card">
+    <h5>Recent detections <span class="text-muted fw-normal" style="font-size:.8rem">(last 50)</span></h5>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" id="recent-detections-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th class="d-none d-md-table-cell">Stream</th>
+            <th>Species</th>
+            <th>Confidence</th>
+            <th class="d-none d-md-table-cell">Audio</th>
+            <th>Spectrogram</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
 {% endblock %}
 
 {% block scripts %}
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
-    <script>
-        const API_SERVER_URL = "{{ api_server_url }}";
-        const SHOW_DETECTIONS_BY_HOUR_URL = "{{ url_for('show_detections_by_hour', date=today, hour=0) }}".slice(0, -1);
-
-
-        // Add the event listener for date picker
-        document.getElementById("date-picker").addEventListener("change", function (event) {
-            const selectedDate = event.target.value;
-            window.location.href = `{{ script_name }}/daily_summary/${selectedDate}`;
-        });
-
-        function setDatePickerMinMaxDate() {
-            fetch('{{ api_server_url }}/api/detections/earliest-date')
-                .then(response => response.json())
-                .then(data => {
-                    const datePicker = document.getElementById('date-picker');
-                    // Set the minimum date
-                    if (data.earliest_date) {
-                        datePicker.min = data.earliest_date.split(' ')[0]; // Convert datetime to date format (YYYY-MM-DD)
-                    }
-
-                    // Set the maximum date to today's date
-                    const today = new Date().toISOString().split('T')[0];
-                    datePicker.max = today;
-                });
-        }
-
-        function generateEmptyGrid(data) {
-            const commonNames = [...new Set(data.map(row => row.common_name))];
-            const hours = Array.from({ length: 24 }, (_, i) => i);
-            const grid = commonNames.map(name => {
-                const row = { common_name: name };
-                hours.forEach(hour => {
-                    row[hour] = 0;
-                });
-                return row;
-            });
-            return grid;
-        }
-
-        function formatTimestamp(timestamp) {
-            const date = new Date(timestamp);
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            return `${hours}:${minutes}`;
-        }
-
-        function updateRecentDetectionsTable() {
-            fetch('{{ api_server_url }}/api/detections/recent/5')
-                .then(response => response.json())
-                .then(detections => {
-                    const tableBody = document.querySelector('#recent-detections-table tbody');
-                    tableBody.innerHTML = '';
-
-                    detections.forEach(detection => {
-                        const row = document.createElement('tr');
-
-                        const formattedTimestamp = formatTimestamp(detection[1]);
-                        const selectedValues = [
-                            formattedTimestamp, // Formatted Timestamp
-                            detection[3], // Stream Name
-                            detection[5], // Common Name
-                            parseFloat(detection[6]).toFixed(2)  // Confidence
-                        ];
-
-                        selectedValues.forEach((value, index) => {
-                            const cell = document.createElement('td');
-                            cell.textContent = value;
-
-                            // Add 'd-none d-md-table-cell' classes to Stream Name cell
-                            if (index === 1) {
-                                cell.classList.add('d-none', 'd-md-table-cell');
-                            }
-
-                            row.appendChild(cell);
-                        });
-
-                        // Add audio player cell
-                        const audioCell = document.createElement('td');
-                        audioCell.classList.add('d-none', 'd-md-table-cell');
-                        if (detection[7]) {
-                            const audioPlayer = document.createElement('audio');
-                            audioPlayer.controls = true;
-                            audioPlayer.src = `${API_SERVER_URL}/api/audio-files/${detection[7]}`;
-                            audioCell.appendChild(audioPlayer);
-                        }
-                        row.appendChild(audioCell);
-
-                        // Add image cell
-                        const imageCell = document.createElement('td');
-                        if (detection[7]) {
-                            const imageElement = document.createElement('img');
-                            imageElement.src = `${API_SERVER_URL}/api/spectrogram/thumb/${detection[7]}.png`;
-                            imageCell.appendChild(imageElement);
-                        }
-                        row.appendChild(imageCell);
-
-                        // Add event listener to navigate to detection details page
-                        row.addEventListener('click', () => {
-                            window.location.href = `{{ script_name }}/detections/detection/${detection[0]}`;
-                        });
-
-                        tableBody.appendChild(row);
-                    });
-                });
-        }
-
-        const getCurrentDateInTimezone = (timezone) => {
-          const now = new Date();
-          const options = { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' };
-          const formattedDate = new Intl.DateTimeFormat('en-US', options).format(now);
-
-          const [month, day, year] = formattedDate.split('/');
-          return `${year}-${month}-${day}`;
-        };
-
-
-        function updateTableHeader(startHour, numColumns) {
-            const headerRow = document.querySelector('#detections-by-day-and-hour-table thead tr');
-            const currHour = new Date().getHours();
-            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            const today = getCurrentDateInTimezone(timezone);
-            // Remove existing hour columns
-            while (headerRow.children.length > 1) {
-                headerRow.removeChild(headerRow.lastChild);
-            }
-
-            // Add visible hour columns
-            for (let i = 0; i < numColumns - 1; i++) {
-                const hour = (startHour + i) % 24;
-                if (hour <= currHour) { // Only create columns for past and current hours
-                    const th = document.createElement('th');
-                    const link = document.createElement('a');
-                    link.href = `{{ script_name }}/detections/by_hour/${today}/${hour}`;
-                    link.textContent = hour;
-                    link.classList.add('btn', 'btn-secondary', 'btn-sm');
-                    th.appendChild(link);
-                    headerRow.appendChild(th);
-                }
-            }
-        }
-
-
-        function fetchData() {
-            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            const today = getCurrentDateInTimezone(timezone);
-
-            fetch(`{{ api_server_url }}/api/detections/count_by_hour/${today}`)
-                .then(response => response.json())
-                .then(data => {
-                    const grid = generateEmptyGrid(data);
-
-                    // Fill the grid with the fetched data
-                    data.forEach(rowData => {
-                        const gridRow = grid.find(row => row.common_name === rowData.common_name);
-                        gridRow[rowData.hour] = rowData.count;
-                    });
-
-                    updateDetectionsByDayAndHourTable(grid);
-                });
-        }
-
-        function updateDetectionsByDayAndHourTable(grid) {
-            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            const today = getCurrentDateInTimezone(timezone);
-            const containerWidth = document.querySelector('.table-responsive').offsetWidth;
-            //const numColumns = Math.floor(containerWidth / 100);
-            const currHour = new Date().getHours();
-            //const startHour = Math.max(0, currHour - (numColumns - 2));
-            const numColumns = currHour + 2;
-            const startHour = 0;
-
-            updateTableHeader(startHour, numColumns);
-
-            const tableBody = document.querySelector('#detections-by-day-and-hour-table tbody');
-            tableBody.innerHTML = '';
-
-            // Create table rows and cells
-            grid.forEach(rowData => {
-                const row = document.createElement('tr');
-                row.dataset.commonName = rowData.common_name;
-
-                // Add common_name cell
-                const commonNameCell = document.createElement('td');
-                const commonNameLink = document.createElement('a');
-                commonNameLink.href = `{{ script_name }}/detections/by_common_name/${encodeURIComponent(rowData.common_name)}/${today}`;
-                commonNameLink.textContent = rowData.common_name;
-                commonNameLink.classList.add('link-dark');
-                commonNameCell.appendChild(commonNameLink);
-                row.appendChild(commonNameCell);
-
-                // Add visible hour cells
-                for (let i = 0; i < numColumns - 1; i++) {
-                    const hour = (startHour + i) % 24;
-                    if (hour <= currHour) { // Only create columns for past and current hours
-                        const cell = document.createElement('td');
-                        const value = rowData[hour] || 0;
-                        if (value !== 0) {
-                            cell.textContent = value;
-                        }
-                        row.appendChild(cell);
-                        row.dataset[hour] = value;
-                    }
-                }
-
-                tableBody.appendChild(row);
-            });
-        }
-
-
-        function updateTables() {
-          updateRecentDetectionsTable();
-          fetchData();
-        }
-
-        function scrollToCurrentHour() {
-            const table = document.getElementById('detections-by-day-and-hour-table');
-            const tableContainer = table.closest('.table-responsive');
-            setTimeout(() => {
-                tableContainer.scrollLeft = tableContainer.scrollWidth;
-            }, 100);
-        }
-
-        // Call scrollToCurrentHour when the page loads
-        window.addEventListener('DOMContentLoaded', scrollToCurrentHour);
-
-        // Call the updateTables function when the page loads
-        updateTables();
-
-        // Call the setDatePickerMinMaxDate function when the page loads
-        setDatePickerMinMaxDate();
-
-        // Set up an interval to call the updateTables function periodically
-        const updateInterval = 30000; // 30 seconds in milliseconds
-        setInterval(updateTables, updateInterval);
-
-        window.addEventListener('resize', () => {
-            fetchData();
-        });
-    </script>
+<script>
+  const API_BASE   = "{{ api_server_url }}";
+  const SCRIPT_NAME = "{{ script_name or '' }}";
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

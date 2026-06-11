@@ -16,16 +16,7 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-light bg-light">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('index') }}">BirdCAGE</a>
-            {% if title_text %}
-            <span class="navbar-text">
-                {% if title_link %}
-                <a class="navbar-title" href="{{ title_link }}">{{ title_text }}</a>
-                {% else %}
-                <span class="navbar-title">{{ title_text }}</span>
-                {% endif %}
-            </span>
-            {% endif %}
+            <a class="navbar-brand" href="{{ url_for('index') }}">{{ title_text or 'BirdCAGE' }}</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
                 aria-label="Toggle navigation">
